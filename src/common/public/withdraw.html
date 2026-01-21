@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>회원탈퇴(계정 삭제) 요청 | 주식회사 디와프</title>
+  <style>
+    :root { color-scheme: light; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, "Noto Sans KR", sans-serif; color:#111; background:#fff; }
+    header { padding:24px 16px; border-bottom:1px solid #eee; }
+    main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { margin:0; font-size: 20px; }
+    p { line-height: 1.65; color:#333; }
+    .card { margin-top:16px; padding:18px; border:1px solid #eee; border-radius:12px; background:#fafafa; }
+    label { display:block; margin: 12px 0 6px; font-weight: 600; font-size: 14px; }
+    input, textarea, select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      background:#fff;
+      font-size: 14px;
+      outline: none;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    .row { display:grid; grid-template-columns: 1fr; gap: 12px; }
+    .hint { font-size: 13px; color:#666; margin-top:6px; }
+    .actions { display:flex; gap:10px; margin-top: 14px; }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .danger { background:#111; color:#fff; }
+    .ghost { background:#eaeaea; color:#111; }
+    .checkline { display:flex; gap:10px; align-items:flex-start; margin-top: 12px; }
+    .checkline input { width:auto; margin-top: 3px; }
+    .status { margin-top: 12px; font-size: 14px; }
+    .ok { color: #0a7a2f; }
+    .bad { color: #b00020; }
+    footer { max-width:720px; margin:0 auto; padding: 18px 16px 36px; font-size: 13px; color:#666; }
+    a { color: inherit; }
+    code { background:#f2f2f2; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <main style="padding:0 16px; max-width:720px;">
+      <h1>회원탈퇴(계정 삭제) 요청</h1>
+      <p class="hint">본 페이지에서 계정 삭제(회원탈퇴)를 요청할 수 있습니다.</p>
+    </main>
+  </header>
+
+  <main>
+    <div class="card">
+      <p>
+        계정 삭제 시, 서비스 이용이 불가능해지며 일부 정보는 관련 법령에 따라 일정 기간 보관될 수 있습니다.
+        자세한 내용은 <a href="./privacy.html">개인정보처리방침</a>을 확인해주세요.
+      </p>
+
+      <form id="withdrawForm">
+        <label for="identifier">가입 시 사용한 정보(필수)</label>
+        <input id="identifier" name="identifier" placeholder="예: 전화번호 또는 아이디" required />
+
+        <div class="row">
+          <div>
+            <label for="reason">탈퇴 사유(선택)</label>
+            <select id="reason" name="reason">
+              <option value="">선택 안 함</option>
+              <option value="not_used">서비스를 사용하지 않음</option>
+              <option value="inconvenient">사용이 불편함</option>
+              <option value="privacy">개인정보/보안 우려</option>
+              <option value="etc">기타</option>
+            </select>
+          </div>
+          <div>
+            <label for="detail">추가 의견(선택)</label>
+            <textarea id="detail" name="detail" placeholder="개선 의견이 있다면 적어주세요."></textarea>
+          </div>
+        </div>
+
+        <div class="checkline">
+          <input type="checkbox" id="confirm" required />
+          <label for="confirm" style="margin:0; font-weight:600;">
+            계정 삭제 시 복구가 어려울 수 있음을 이해했으며, 삭제를 요청합니다.
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="danger">탈퇴 요청 보내기</button>
+          <button type="button" class="ghost" onclick="location.href='./privacy.html'">개인정보처리방침 보기</button>
+        </div>
+
+        <div id="status" class="status" aria-live="polite"></div>
+        <p class="hint">
+        </p>
+      </form>
+    </div>
+  </main>
+
+  <footer>
+    문의: <a href="mailto:yeonho4698@gmail.com">yeonho4698@gmail.com</a>
+  </footer>
+
+</body>
+</html>
