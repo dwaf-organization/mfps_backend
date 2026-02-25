@@ -5,10 +5,10 @@ export interface WeightRow {
   value: number;
 }
 
-const CHANGE_RATIO = 0.15;        // 평균 대비 15%
-const CHANGE_ABSOLUTE = 100_000;
-const CONTINUOUS_MINUTES = 3;     // 3분 연속
-const MIN_SENSORS_CHANGED = 1;    // 한 measurement에서 최소 몇 개 센서가 튀면 "변화"로 볼지
+const CHANGE_THRESHOLD = 0.10;        // 10%로 변경 (기존 15%)
+const CONFIRMATION_COUNT = 3;         // 3번 연속 확인
+const STABILITY_THRESHOLD = 0.05;     // 5% 이내면 안정 상태
+const CONFIRMATION_TIME_WINDOW = 15;  // 15분 내 연속 변화
 
 export function calcSensorAverages(rows: WeightRow[]) {
   const sum = new Map<number, number>();
@@ -27,16 +27,10 @@ export function calcSensorAverages(rows: WeightRow[]) {
   return avg;
 }
 
-function isPostureChanged(value: number, avg: number): boolean {
-  const diff = Math.abs(value - avg);
-  return diff >= CHANGE_ABSOLUTE;
-}
-
 /**
- * 마지막 움직임 시점 찾기 (measurement 단위로)
- * - 같은 measurement_code(=1분)를 하나의 측정으로 보고
- * - 그 측정에서 N개 이상의 센서가 평균 대비 15% 이상 튀면 "움직임"
- * - 이런 "움직임"이 3회 연속이면 마지막 움직임 시각 갱신
+ * 개선된 자세 변경 감지 알고리즘
+ * - 10% 이상 변화를 3번 연속 확인
+ * - 일시적 뒤척임과 실제 자세 변경 구분
  */
 export function findLastMovementTime(
   rows: WeightRow[],
@@ -57,39 +51,103 @@ export function findLastMovementTime(
   const measures = Array.from(byMeasure.entries())
     .sort((a, b) => a[1].create_at.getTime() - b[1].create_at.getTime());
 
-  let streak = 0;
-  let lastMove: Date | null = null;
+  return detectConfirmedPostureChange(measures, avgMap);
+}
 
-  for (const [, m] of measures) {
-    let changedSensors = 0;
+/**
+ * 확정된 자세 변경 시점 찾기
+ */
+function detectConfirmedPostureChange(
+  measures: Array<[number, { create_at: Date; sensors: Map<number, number> }]>,
+  avgMap: Map<number, number>
+): Date | null {
+  let baselinePattern = new Map<number, number>(avgMap); // 초기 기준값
+  let candidateChangeTime: Date | null = null;
+  let confirmationCounter = 0;
+  let lastConfirmedChange: Date | null = null;
 
-    for (const [sensor, value] of m.sensors.entries()) {
-      const avg = avgMap.get(sensor);
-      if (!avg) continue;
-
-      if (isPostureChanged(value, avg)) changedSensors++;
-    }
-
-    const movedThisMinute = changedSensors >= MIN_SENSORS_CHANGED;
-
-    if (movedThisMinute) {
-      streak++;
-      if (streak >= CONTINUOUS_MINUTES) {
-        lastMove = m.create_at;
+  for (const [, measurement] of measures) {
+    const { create_at, sensors } = measurement;
+    
+    // 현재 측정값이 기준 패턴과 얼마나 다른지 확인
+    const maxChange = calculateMaxChange(baselinePattern, sensors);
+    
+    if (maxChange >= CHANGE_THRESHOLD) {
+      // 10% 이상 변화 감지
+      
+      if (candidateChangeTime === null) {
+        // 첫 번째 변화 감지 - 후보로 등록
+        candidateChangeTime = create_at;
+        confirmationCounter = 1;
+      } else {
+        // 연속된 변화인지 확인
+        const timeDiffMinutes = (create_at.getTime() - candidateChangeTime.getTime()) / 60000;
+        
+        if (timeDiffMinutes <= CONFIRMATION_TIME_WINDOW) {
+          confirmationCounter++;
+          
+          // 3번 연속 확인되면 자세 변경으로 확정
+          if (confirmationCounter >= CONFIRMATION_COUNT) {
+            lastConfirmedChange = candidateChangeTime;
+            
+            // 새로운 기준 패턴으로 업데이트
+            baselinePattern = new Map(sensors);
+            
+            // 리셋
+            candidateChangeTime = null;
+            confirmationCounter = 0;
+          }
+        } else {
+          // 시간 간격이 너무 벌어짐 - 새로운 후보로 시작
+          candidateChangeTime = create_at;
+          confirmationCounter = 1;
+        }
       }
     } else {
-      streak = 0;
+      // 변화가 작음 - 기존 패턴으로 복귀했을 가능성 확인
+      if (candidateChangeTime !== null) {
+        const isBackToBaseline = calculateMaxChange(baselinePattern, sensors) <= STABILITY_THRESHOLD;
+        
+        if (isBackToBaseline) {
+          // 원래 패턴으로 복귀 = 뒤척임이었음
+          candidateChangeTime = null;
+          confirmationCounter = 0;
+        }
+      }
     }
   }
 
-  return lastMove;
+  return lastConfirmedChange;
 }
 
+/**
+ * 두 센서값 패턴의 최대 변화율 계산
+ */
+function calculateMaxChange(
+  baselinePattern: Map<number, number>, 
+  currentSensors: Map<number, number>
+): number {
+  let maxChange = 0;
+  
+  for (const [sensor, currentValue] of currentSensors) {
+    const baseline = baselinePattern.get(sensor) || 0;
+    if (baseline > 0) {
+      const changeRatio = Math.abs(currentValue - baseline) / baseline;
+      maxChange = Math.max(maxChange, changeRatio);
+    }
+  }
+  
+  return maxChange;
+}
+
+/**
+ * 경고 상태 결정 (기존과 동일)
+ */
 export function decideWarningState(
   lastMove: Date | null,
   anchor: Date,
 ): number {
-  // 한 번도 움직임이 감지되지 않은 경우
+  // 한 번도 확정된 움직임이 감지되지 않은 경우
   if (!lastMove) {
     const diffMinutes = 120; // 최소 위험으로 간주
     return 2;
@@ -97,8 +155,7 @@ export function decideWarningState(
 
   const diffMinutes = (anchor.getTime() - lastMove.getTime()) / 60000;
 
-  if (diffMinutes >= 120) return 2; // 위험
-  if (diffMinutes >= 60) return 1;  // 경고
-  return 0;                          // 안정
+  if (diffMinutes >= 120) return 2; // 위험 (2시간 이상)
+  if (diffMinutes >= 60) return 1;  // 경고 (1시간 이상)
+  return 0;                          // 안정 (1시간 미만)
 }
-

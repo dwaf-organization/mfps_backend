@@ -20,5 +20,5 @@ export class DevicePositionEntity {
     location: HospitalStructureInfoEntity;
 
     @Column({ nullable: true })
-    description: string;
+    device_unique_id: string;
 }

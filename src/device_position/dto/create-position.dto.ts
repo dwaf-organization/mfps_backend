@@ -14,5 +14,5 @@ export class CreatePositionDto {
 
     @IsString()
     @IsOptional()
-    description?: string;
+    device_unique_id?: string;
 }

@@ -99,7 +99,6 @@ export class HospitalStructureInfoService {
                 category_name: part.category_name,
                 sort_order: part.sort_order,
             }))
-            //parts,
         }
     }
 
@@ -139,14 +138,15 @@ export class HospitalStructureInfoService {
         if (!floor) throw new NotFoundException('존재하지 않는 층 입니다.');
 
         const patients = await this.profileRepository
-        .createQueryBuilder('patient')                      // bed, room, floor = hospital_structure_info, warn = patient_warning_state
-        .leftJoinAndSelect('patient.bedCode', 'bed')        // 침상 hospital_structure_info.hospital_st_code = patient.bed_code
-        .leftJoinAndSelect('bed.parents', 'room')           // 침실 hospital_structure_info.hospital_st_code = hospital_structure_info.parents_code
-        .leftJoinAndSelect('room.parents', 'floor')         // 층   hospital_structure_info.hospital_st_code = hospital_structure_info.parents_code
-        .leftJoinAndSelect('patient.warningState', 'warn')  // 위험상태
+        .createQueryBuilder('patient')
+        .leftJoinAndSelect('patient.bedCode', 'bed')
+        .leftJoinAndSelect('bed.parents', 'room')
+        .leftJoinAndSelect('room.parents', 'floor')
+        .leftJoinAndSelect('patient.warningStates', 'warns')
+        .leftJoinAndSelect('bed.devicePositions', 'device')
         .where('floor.hospital_st_code = :floorCode', { floorCode })
         .andWhere('patient.is_deleted = 0')
-        .orderBy('warn.warning_state', 'DESC')
+        .orderBy('warns.create_at', 'DESC')
         .addOrderBy('room.category_name', 'ASC')
         .addOrderBy('bed.category_name', 'ASC')
         .getMany();
@@ -154,13 +154,20 @@ export class HospitalStructureInfoService {
         return {
             floor_code: floor.hospital_st_code,
             floor_category_name: floor.category_name,
-            patients: patients.map(p => ({
-                patient_code: Number(p.patient_code),
-                patient_name: p.patient_name,
-                patient_room: p.bedCode?.parents?.category_name,
-                patient_bed: p.bedCode?.category_name,
-                patient_warning: p.warningState.warning_state,
-            })),
+            patients: patients.map(p => {
+                // 해당 침대의 디바이스 정보 가져오기
+                const device = p.bedCode?.devicePositions?.[0]; // 1:1 관계라고 가정
+
+                return {
+                    patient_code: Number(p.patient_code),
+                    patient_name: p.patient_name,
+                    patient_room: p.bedCode?.parents?.category_name,
+                    patient_bed: p.bedCode?.category_name,
+                    patient_warning: p.warningStates?.[0]?.warning_state ?? 0,
+                    device_code: device?.device_code ?? null,           // 새로 추가
+                    device_unique_id: device?.device_unique_id ?? null, // 새로 추가
+                };
+            }),
         };
     }
 
@@ -176,20 +183,22 @@ export class HospitalStructureInfoService {
 
         const roomCodes = rooms.map(r => r.hospital_st_code);
 
+        // 침대 정보 조회 시 디바이스 정보도 함께 가져오기
         const beds = await this.structureRepository.find({
             where: { parents: In(roomCodes) },
             order: { sort_order: 'ASC' },
-            relations: ['parents'],
+            relations: ['parents', 'devicePositions'], // 디바이스 관계 추가
         });
 
         const bedCodes = beds.map(b => b.hospital_st_code);
 
         const patients = await this.profileRepository
         .createQueryBuilder('patient')
-        .leftJoinAndSelect('patient.warningState', 'warn')
+        .leftJoinAndSelect('patient.warningStates', 'warns')
         .leftJoinAndSelect('patient.bedCode', 'bed')
         .where('patient.is_deleted = 0')
         .andWhere('bed.hospital_st_code IN (:...bedCodes)', { bedCodes })
+        .orderBy('warns.create_at', 'DESC')
         .getMany();
 
         const patientMap = new Map<number, any>();
@@ -201,7 +210,7 @@ export class HospitalStructureInfoService {
                 patient_code: p.patient_code,
                 patient_name: p.patient_name,
                 patient_age: p.age,
-                patient_warning: p.warningState.warning_state ?? null,
+                patient_warning: p.warningStates?.[0]?.warning_state ?? 0,
             });
         });
 
@@ -212,6 +221,13 @@ export class HospitalStructureInfoService {
             if (!roomCode) return;
             
             const patient = patientMap.get(b.hospital_st_code);
+            
+            // 환자 정보에 디바이스 정보 추가
+            if (patient) {
+                const device = b.devicePositions?.[0]; // 1:1 관계이므로 첫 번째 디바이스
+                patient.device_code = device?.device_code ?? null;
+                patient.device_unique_id = device?.device_unique_id ?? null;
+            }
 
             const bedDto = {
                 parents_code: roomCode,

@@ -16,8 +16,8 @@ export class PatientProfileEntity {
     @OneToMany(() => PatientBedHistoryEntity, history => history.patient)
     history: PatientBedHistoryEntity[];
 
-    @OneToOne(() => PatientWarningStateEntity, warning => warning.patientProfile)
-    warningState: PatientWarningStateEntity;
+    @OneToMany(() => PatientWarningStateEntity, warning => warning.patientProfile)
+    warningStates: PatientWarningStateEntity[];
 
     @Column()
     patient_name: string;
