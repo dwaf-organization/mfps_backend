@@ -1,11 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HospitalStructureInfoEntity } from './hospital_structure_info.entity';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository, DataSource } from 'typeorm';
 import { CreateStructureDto } from './dto/create-structure.dto';
 import { HospitalEmailEntity } from 'src/hospital_email/hospital_email.entity';
 import { PatientProfileEntity } from 'src/patient_profile/patient_profile.entity';
+import { DevicePositionEntity } from 'src/device_position/device_position.entity';
 import { UpdateStructureDto } from './dto/update-structure.dto';
+import { UpdateStructureOrderDto } from './dto/update-structure-order.dto';
+import { MeasurementEntity } from 'src/measurement/measurement.entity';
 
 @Injectable()
 export class HospitalStructureInfoService {
@@ -16,6 +19,7 @@ export class HospitalStructureInfoService {
         private readonly emailRepository: Repository<HospitalEmailEntity>,
         @InjectRepository(PatientProfileEntity)
         private readonly profileRepository: Repository<PatientProfileEntity>,
+        private readonly dataSource: DataSource,
     ) {}
 
     // POST /hospital/structure
@@ -118,7 +122,8 @@ export class HospitalStructureInfoService {
                 hospital_st_code: true, 
                 category_name: true, 
                 sort_order: true
-            }
+            },
+            order: { sort_order: 'ASC' }
         });
 
         return {
@@ -284,5 +289,164 @@ export class HospitalStructureInfoService {
         part.is_deleted = 1;
 
         await this.structureRepository.save(part);
+    }
+
+    // PUT /hospital/structure/reorder
+    async reorder(dto: UpdateStructureOrderDto) {
+        const structure = await this.structureRepository.findOne({ 
+            where: { hospital_st_code: dto.hospital_st_code },
+            relations: ['parents']
+        });
+        
+        if (!structure) {
+            throw new NotFoundException('존재하지 않는 구조입니다.');
+        }
+
+        // sort_order 변경 시 중복 검사
+        if (dto.sort_order && dto.sort_order !== structure.sort_order) {
+            
+            // 부모가 있는 경우와 없는 경우를 분리해서 처리
+            const whereCondition = structure.parents 
+                ? {
+                    parents: { hospital_st_code: structure.parents.hospital_st_code },
+                    sort_order: dto.sort_order,
+                    hospital_st_code: Not(dto.hospital_st_code)
+                }
+                : {
+                    parents: IsNull(), // null 대신 IsNull() 사용
+                    sort_order: dto.sort_order,
+                    hospital_st_code: Not(dto.hospital_st_code)
+                };
+
+            const duplicate = await this.structureRepository.findOne({
+                where: whereCondition
+            });
+
+            if (duplicate) {
+                throw new ConflictException('이미 사용 중인 순서입니다.');
+            }
+        }
+
+        // 필드 업데이트
+        if (dto.category_name) {
+            structure.category_name = dto.category_name;
+        }
+        
+        if (dto.sort_order) {
+            structure.sort_order = dto.sort_order;
+        }
+
+        const updated = await this.structureRepository.save(structure);
+
+        return {
+            hospital_st_code: updated.hospital_st_code,
+            category_name: updated.category_name,
+            sort_order: updated.sort_order,
+            level: updated.level,
+            update_at: updated.update_at,
+        };
+    }
+
+    // DELETE /hospital/structure/floor/:hospital_st_code
+    async deleteFloor(floorCode: number) {
+        return await this.dataSource.transaction(async manager => {
+            
+            // 1. 층이 존재하는지 확인
+            const floor = await manager.findOne(HospitalStructureInfoEntity, {
+                where: { hospital_st_code: floorCode, level: 2 }
+            });
+            
+            if (!floor) {
+                throw new NotFoundException('존재하지 않는 층입니다.');
+            }
+
+            // 2. 해당 층의 모든 호실 조회
+            const rooms = await manager.find(HospitalStructureInfoEntity, {
+                where: { 
+                    parents: { hospital_st_code: floorCode },
+                    level: 3 
+                }
+            });
+
+            const roomCodes = rooms.map(r => r.hospital_st_code);
+
+            // 3. 해당 층의 모든 침대 조회
+            const beds = await manager.find(HospitalStructureInfoEntity, {
+                where: { 
+                    parents: In(roomCodes),
+                    level: 4 
+                }
+            });
+
+            const bedCodes = beds.map(b => b.hospital_st_code);
+
+            if (bedCodes.length > 0) {
+                // 4. 침대에 배정된 환자 확인
+                const patientsCount = await manager.count(PatientProfileEntity, {
+                    where: { 
+                        bedCode: In(bedCodes),
+                        is_deleted: 0 
+                    }
+                });
+
+                if (patientsCount > 0) {
+                    throw new ConflictException(`해당 층에 ${patientsCount}명의 환자가 배정되어 있습니다. 먼저 환자를 이동시켜주세요.`);
+                }
+
+                // 5. 침대에 연결된 디바이스 확인
+                const devicesCount = await manager.count(DevicePositionEntity, {
+                    where: { device_loc_code: In(bedCodes) }
+                });
+
+                if (devicesCount > 0) {
+                    throw new ConflictException(`해당 층에 ${devicesCount}개의 디바이스가 연결되어 있습니다. 먼저 디바이스 연결을 해제해주세요.`);
+                }
+
+                // 6. 측정 데이터 확인 (침대 기반)
+                const measurementsCount = await manager
+                    .createQueryBuilder(MeasurementEntity, 'measurement')
+                    .leftJoin(PatientProfileEntity, 'patient', 'patient.patient_code = measurement.patient_code')
+                    .where('patient.bedCode IN (:...bedCodes)', { bedCodes })
+                    .getCount();
+
+                if (measurementsCount > 0) {
+                    throw new ConflictException(`해당 층에 ${measurementsCount}개의 측정 데이터가 있습니다. 데이터를 먼저 정리해주세요.`);
+                }
+            }
+
+            // 7. 삭제 실행 (순서 중요: 하위 → 상위)
+            let deletedCount = 0;
+
+            // 침대 삭제
+            if (bedCodes.length > 0) {
+                const deletedBeds = await manager.delete(HospitalStructureInfoEntity, {
+                    hospital_st_code: In(bedCodes)
+                });
+                deletedCount += deletedBeds.affected || 0;
+            }
+
+            // 호실 삭제
+            if (roomCodes.length > 0) {
+                const deletedRooms = await manager.delete(HospitalStructureInfoEntity, {
+                    hospital_st_code: In(roomCodes)
+                });
+                deletedCount += deletedRooms.affected || 0;
+            }
+
+            // 층 삭제
+            const deletedFloor = await manager.delete(HospitalStructureInfoEntity, {
+                hospital_st_code: floorCode
+            });
+            deletedCount += deletedFloor.affected || 0;
+
+            return {
+                deleted_floor_code: floorCode,
+                deleted_floor_name: floor.category_name,
+                total_deleted_count: deletedCount,
+                deleted_rooms_count: roomCodes.length,
+                deleted_beds_count: bedCodes.length,
+                message: '층과 모든 하위 구조가 성공적으로 삭제되었습니다.'
+            };
+        });
     }
 }

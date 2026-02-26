@@ -3,6 +3,7 @@ import { HospitalStructureInfoService } from './hospital_structure_info.service'
 import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
 import { CreateStructureDto } from './dto/create-structure.dto';
 import { UpdateStructureDto } from './dto/update-structure.dto';
+import { UpdateStructureOrderDto } from './dto/update-structure-order.dto';
 
 @Controller('hospital')
 export class HospitalStructureInfoController {
@@ -62,5 +63,17 @@ export class HospitalStructureInfoController {
     @Delete('structure/delete/:hospital_st_code')
     async partDelete(@Param('hospital_st_code') partCode: number) {
         return this.structureService.delete(partCode);
+    }
+
+    @ResponseMessage('병원구조정보 순서 수정 성공')
+    @Put('structure/reorder')
+    async reorder(@Body() dto: UpdateStructureOrderDto) {
+        return this.structureService.reorder(dto);
+    }
+
+    @ResponseMessage('층 삭제 성공')
+    @Delete('structure/floor/:hospital_st_code')
+    async deleteFloor(@Param('hospital_st_code') floorCode: number) {
+        return this.structureService.deleteFloor(floorCode);
     }
 }
