@@ -98,4 +98,16 @@ export class HospitalStructureInfoController {
   async updateRoomDetail(@Body() dto: UpdateRoomDetailDto) {
     return this.structureService.updateRoomDetail(dto);
   }
+
+  @ResponseMessage('호실 삭제 성공')
+  @Delete('structure/room/:room_code')
+  async deleteRoom(@Param('room_code') roomCode: number) {
+    return this.structureService.deleteRoom(roomCode);
+  }
+
+  @ResponseMessage('침상 삭제 성공')
+  @Delete('structure/bed/:bed_code')
+  async deleteBed(@Param('bed_code') bedCode: number) {
+    return this.structureService.deleteBed(bedCode);
+  }
 }

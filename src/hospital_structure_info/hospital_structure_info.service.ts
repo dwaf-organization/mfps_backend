@@ -202,6 +202,15 @@ export class HospitalStructureInfoService {
       order: { sort_order: 'ASC' },
     });
 
+    // 호실이 없어도 빈 배열로 처리
+    if (rooms.length === 0) {
+      return {
+        floor_code: floor.hospital_st_code,
+        floor_category_name: floor.category_name,
+        rooms: [], // 빈 배열 반환
+      };
+    }
+
     const roomCodes = rooms.map((r) => r.hospital_st_code);
 
     // 침대 정보 조회 시 디바이스 정보도 함께 가져오기
@@ -213,14 +222,18 @@ export class HospitalStructureInfoService {
 
     const bedCodes = beds.map((b) => b.hospital_st_code);
 
-    const patients = await this.profileRepository
-      .createQueryBuilder('patient')
-      .leftJoinAndSelect('patient.warningStates', 'warns')
-      .leftJoinAndSelect('patient.bedCode', 'bed')
-      .where('patient.is_deleted = 0')
-      .andWhere('bed.hospital_st_code IN (:...bedCodes)', { bedCodes })
-      .orderBy('warns.create_at', 'DESC')
-      .getMany();
+    // 환자 정보 조회 (침대가 없어도 빈 배열로 처리)
+    const patients =
+      bedCodes.length > 0
+        ? await this.profileRepository
+            .createQueryBuilder('patient')
+            .leftJoinAndSelect('patient.warningStates', 'warns')
+            .leftJoinAndSelect('patient.bedCode', 'bed')
+            .where('patient.is_deleted = 0')
+            .andWhere('bed.hospital_st_code IN (:...bedCodes)', { bedCodes })
+            .orderBy('warns.create_at', 'DESC')
+            .getMany()
+        : []; // 침대가 없으면 빈 배열
 
     const patientMap = new Map<number, any>();
 
@@ -259,7 +272,6 @@ export class HospitalStructureInfoService {
       };
 
       if (!bedMap.has(roomCode)) bedMap.set(roomCode, []);
-
       bedMap.get(roomCode)!.push(bedDto);
     });
 
@@ -271,7 +283,7 @@ export class HospitalStructureInfoService {
         hospital_st_code: room.hospital_st_code,
         category_name: room.category_name,
         sort_order: room.sort_order,
-        beds: bedMap.get(room.hospital_st_code) ?? [],
+        beds: bedMap.get(room.hospital_st_code) ?? [], // 침상이 없으면 빈 배열
       })),
     };
   }
@@ -613,6 +625,117 @@ export class HospitalStructureInfoService {
       } catch (error) {
         throw error;
       }
+    });
+  }
+
+  // DELETE /hospital/structure/room/:room_code
+  async deleteRoom(roomCode: number) {
+    return await this.dataSource.transaction(async (manager) => {
+      // 1. 호실 존재 확인
+      const room = await manager.findOne(HospitalStructureInfoEntity, {
+        where: {
+          hospital_st_code: roomCode,
+          level: 3,
+        },
+      });
+
+      if (!room) {
+        throw new NotFoundException('존재하지 않는 호실입니다.');
+      }
+
+      // 2. 해당 호실의 모든 침상 조회
+      const beds = await manager.find(HospitalStructureInfoEntity, {
+        where: {
+          parents: { hospital_st_code: roomCode },
+          level: 4,
+        },
+      });
+
+      const bedCodes = beds.map((b) => b.hospital_st_code);
+
+      // 3. 침상에 배정된 환자 확인
+      if (bedCodes.length > 0) {
+        const patientsCount = await manager.count(PatientProfileEntity, {
+          where: {
+            bedCode: { hospital_st_code: In(bedCodes) },
+            is_deleted: 0,
+          },
+        });
+
+        if (patientsCount > 0) {
+          throw new ConflictException(
+            `해당 호실에 ${patientsCount}명의 환자가 배정되어 있습니다. 먼저 환자를 이동시켜주세요.`,
+          );
+        }
+      }
+
+      // 4. 삭제 실행 (침상 → 호실 순서)
+      let deletedCount = 0;
+
+      // 침상 삭제
+      if (bedCodes.length > 0) {
+        const deletedBeds = await manager.delete(HospitalStructureInfoEntity, {
+          hospital_st_code: In(bedCodes),
+        });
+        deletedCount += deletedBeds.affected || 0;
+      }
+
+      // 호실 삭제
+      const deletedRoom = await manager.delete(HospitalStructureInfoEntity, {
+        hospital_st_code: roomCode,
+      });
+      deletedCount += deletedRoom.affected || 0;
+
+      return {
+        deleted_room_code: roomCode,
+        deleted_room_name: room.category_name,
+        deleted_beds_count: bedCodes.length,
+        total_deleted_count: deletedCount,
+        message: '호실과 모든 침상이 성공적으로 삭제되었습니다.',
+      };
+    });
+  }
+
+  // DELETE /hospital/structure/bed/:bed_code
+  async deleteBed(bedCode: number) {
+    return await this.dataSource.transaction(async (manager) => {
+      // 1. 침상 존재 확인
+      const bed = await manager.findOne(HospitalStructureInfoEntity, {
+        where: {
+          hospital_st_code: bedCode,
+          level: 4,
+        },
+      });
+
+      if (!bed) {
+        throw new NotFoundException('존재하지 않는 침상입니다.');
+      }
+
+      // 2. 해당 침상에 배정된 환자 확인
+      const patientsCount = await manager.count(PatientProfileEntity, {
+        where: {
+          bedCode: { hospital_st_code: bedCode },
+          is_deleted: 0,
+        },
+      });
+
+      if (patientsCount > 0) {
+        throw new ConflictException(
+          `해당 침상에 ${patientsCount}명의 환자가 배정되어 있습니다. 먼저 환자를 이동시켜주세요.`,
+        );
+      }
+
+      // 3. 침상 삭제
+      const deletedBed = await manager.delete(HospitalStructureInfoEntity, {
+        hospital_st_code: bedCode,
+      });
+
+      return {
+        deleted_bed_code: bedCode,
+        deleted_bed_name: bed.category_name,
+        deleted_count: deletedBed.affected || 0,
+        message: '침상이 성공적으로 삭제되었습니다.',
+      };
     });
   }
 }
