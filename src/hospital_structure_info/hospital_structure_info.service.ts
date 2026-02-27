@@ -513,13 +513,15 @@ export class HospitalStructureInfoService {
       order: { sort_order: 'ASC' }, // 정렬순서 오름차순
     });
 
-    // 3. 응답 데이터 구성
+    // 3. 응답 데이터 구성 (hospital_st_code 포함)
     return {
       room_info: {
+        hospital_st_code: room.hospital_st_code, // ← 추가
         room_name: room.category_name,
         sort_order: room.sort_order,
       },
       beds: beds.map((bed) => ({
+        hospital_st_code: bed.hospital_st_code, // ← 추가
         bed_name: bed.category_name,
         sort_order: bed.sort_order,
       })),

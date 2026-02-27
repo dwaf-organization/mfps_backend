@@ -168,7 +168,7 @@ export class PatientWarningStateService {
         patientCode,
         latestMeasurement.create_at,
       );
-      if (totalWeight < 5000) {
+      if (totalWeight < 15000) {
         console.log(
           `환자 ${patientCode}: 총 무게 ${totalWeight} (빈 침대) - 안정 상태로 설정`,
         );
