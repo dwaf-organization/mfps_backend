@@ -1,79 +1,101 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { HospitalStructureInfoService } from './hospital_structure_info.service';
 import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
 import { CreateStructureDto } from './dto/create-structure.dto';
 import { UpdateStructureDto } from './dto/update-structure.dto';
 import { UpdateStructureOrderDto } from './dto/update-structure-order.dto';
+import { UpdateRoomDetailDto } from './dto/update-room-detail.dto';
 
 @Controller('hospital')
 export class HospitalStructureInfoController {
-    constructor (
-        private readonly structureService: HospitalStructureInfoService,
-    ) {}
+  constructor(
+    private readonly structureService: HospitalStructureInfoService,
+  ) {}
 
-    @ResponseMessage('병원구조정보 생성 성공')
-    @Post('structure')
-    async create(@Body() dto: CreateStructureDto) {
-        const structure = await this.structureService.create(dto);
+  @ResponseMessage('병원구조정보 생성 성공')
+  @Post('structure')
+  async create(@Body() dto: CreateStructureDto) {
+    const structure = await this.structureService.create(dto);
 
-        return structure;
-    }
+    return structure;
+  }
 
-    @ResponseMessage('병원구조정보 층별 조회 성공')
-    @Get('structure')
-    async informationByFloor(@Query('hospital_st_code') floorCode: number) {
-        const info = await this.structureService.informationByFloor(floorCode);
+  @ResponseMessage('병원구조정보 층별 조회 성공')
+  @Get('structure')
+  async informationByFloor(@Query('hospital_st_code') floorCode: number) {
+    const info = await this.structureService.informationByFloor(floorCode);
 
-        return info;
-    } 
+    return info;
+  }
 
-    @ResponseMessage('병원구조정보 병동 조회 성공')
-    @Get('structure/part')
-    async partcheck(@Query('hospital_code') hospitalCode: number) {
-        const parts = await this.structureService.partcheck(hospitalCode);
+  @ResponseMessage('병원구조정보 병동 조회 성공')
+  @Get('structure/part')
+  async partcheck(@Query('hospital_code') hospitalCode: number) {
+    const parts = await this.structureService.partcheck(hospitalCode);
 
-        return parts;
-    }
+    return parts;
+  }
 
-    @ResponseMessage('병원구조정보 병동별 층 조회 성공')
-    @Get('structure/floor')
-    async floorcheck(@Query('hospital_st_code') hospitalStCode: number) {
-        const floors = await this.structureService.floorcheck(hospitalStCode);
+  @ResponseMessage('병원구조정보 병동별 층 조회 성공')
+  @Get('structure/floor')
+  async floorcheck(@Query('hospital_st_code') hospitalStCode: number) {
+    const floors = await this.structureService.floorcheck(hospitalStCode);
 
-        return floors;
-    }
+    return floors;
+  }
 
-    @ResponseMessage('병원구조정보 층별 환자 목록 조회 성공')
-    @Get('structure/patient-list')
-    async patientsByFloor(@Query('hospital_st_code') floorCode: number) {
-        const patients = await this.structureService.patientsByFloor(floorCode);
+  @ResponseMessage('병원구조정보 층별 환자 목록 조회 성공')
+  @Get('structure/patient-list')
+  async patientsByFloor(@Query('hospital_st_code') floorCode: number) {
+    const patients = await this.structureService.patientsByFloor(floorCode);
 
-        return patients;
-    }
+    return patients;
+  }
 
-    @ResponseMessage('병동이름 수정 성공')
-    @Put('structure/update')
-    async partUpdate(@Body() dto: UpdateStructureDto) {
-        const part = await this.structureService.partUpdate(dto);
+  @ResponseMessage('병동이름 수정 성공')
+  @Put('structure/update')
+  async partUpdate(@Body() dto: UpdateStructureDto) {
+    const part = await this.structureService.partUpdate(dto);
 
-        return part;
-    }
+    return part;
+  }
 
-    @ResponseMessage('병동 삭제 성공')
-    @Delete('structure/delete/:hospital_st_code')
-    async partDelete(@Param('hospital_st_code') partCode: number) {
-        return this.structureService.delete(partCode);
-    }
+  @ResponseMessage('병동 삭제 성공')
+  @Delete('structure/delete/:hospital_st_code')
+  async partDelete(@Param('hospital_st_code') partCode: number) {
+    return this.structureService.delete(partCode);
+  }
 
-    @ResponseMessage('병원구조정보 순서 수정 성공')
-    @Put('structure/reorder')
-    async reorder(@Body() dto: UpdateStructureOrderDto) {
-        return this.structureService.reorder(dto);
-    }
+  @ResponseMessage('병원구조정보 순서 수정 성공')
+  @Put('structure/reorder')
+  async reorder(@Body() dto: UpdateStructureOrderDto) {
+    return this.structureService.reorder(dto);
+  }
 
-    @ResponseMessage('층 삭제 성공')
-    @Delete('structure/floor/:hospital_st_code')
-    async deleteFloor(@Param('hospital_st_code') floorCode: number) {
-        return this.structureService.deleteFloor(floorCode);
-    }
+  @ResponseMessage('층 삭제 성공')
+  @Delete('structure/floor/:hospital_st_code')
+  async deleteFloor(@Param('hospital_st_code') floorCode: number) {
+    return this.structureService.deleteFloor(floorCode);
+  }
+
+  @ResponseMessage('호실 상세정보 조회 성공')
+  @Get('structure/room/:room_code')
+  async getRoomDetail(@Param('room_code') roomCode: number) {
+    return this.structureService.getRoomDetail(roomCode);
+  }
+
+  @ResponseMessage('호실 상세정보 수정 성공')
+  @Put('structure/room/update')
+  async updateRoomDetail(@Body() dto: UpdateRoomDetailDto) {
+    return this.structureService.updateRoomDetail(dto);
+  }
 }
