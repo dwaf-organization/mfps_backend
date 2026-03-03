@@ -6,7 +6,7 @@ import { WebService } from './web.service';
 export class WebController {
   constructor(private readonly webService: WebService) {}
 
-  @Get('withdraw')
+  @Get('withdrawal')
   getWithdrawPage(@Res() res: Response) {
     const html = this.webService.getWithdrawPageHtml();
     res.send(html);
