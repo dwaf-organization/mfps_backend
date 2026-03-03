@@ -19,10 +19,14 @@ import { WeightMeasurementModule } from './weight_measurement/weight_measurement
 import { PatientBedHistoryEntity } from './patient_bed_history/patient_bed_history.entity';
 import { PatientWarningStateEntity } from './patient_warning_state/patient_warning_entity';
 import { WeightMeasurementEntity } from './weight_measurement/weight_measurement.entity';
+import { BodyPartsEntity } from './body_parts/body_parts.entity';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { ScheduleModule } from '@nestjs/schedule';
 import { WebModule } from './web/web.module';
+import { BodyPartsModule } from './body_parts/body_parts.module';
+import { PatientUlcerHistoryModule } from './patient_ulcer_history/patient_ulcer_history.module';
+import { PatientUlcerHistoryEntity } from './patient_ulcer_history/patient_ulcer_history.entity';
 
 @Module({
   imports: [
@@ -45,6 +49,8 @@ import { WebModule } from './web/web.module';
         PatientBedHistoryEntity,
         PatientWarningStateEntity,
         WeightMeasurementEntity,
+        BodyPartsEntity,
+        PatientUlcerHistoryEntity,
       ],
       synchronize: true,
     }),
@@ -58,6 +64,8 @@ import { WebModule } from './web/web.module';
     PatientWarningStateModule,
     WeightMeasurementModule,
     WebModule,
+    BodyPartsModule,
+    PatientUlcerHistoryModule,
   ],
   controllers: [],
   providers: [
