@@ -22,6 +22,7 @@ import { WeightMeasurementEntity } from './weight_measurement/weight_measurement
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { ScheduleModule } from '@nestjs/schedule';
+import { WebModule } from './web/web.module';
 
 @Module({
   imports: [
@@ -34,8 +35,7 @@ import { ScheduleModule } from '@nestjs/schedule';
       username: process.env.DB_USERNAME,
       password: process.env.DB_PASSWORD,
       database: process.env.DB_DATABASE,
-      entities: 
-      [
+      entities: [
         DeviceStateEntity,
         DevicePositionEntity,
         HospitalStructureInfoEntity,
@@ -57,6 +57,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     HospitalEmailModule,
     PatientWarningStateModule,
     WeightMeasurementModule,
+    WebModule,
   ],
   controllers: [],
   providers: [
