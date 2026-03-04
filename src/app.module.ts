@@ -27,6 +27,12 @@ import { WebModule } from './web/web.module';
 import { BodyPartsModule } from './body_parts/body_parts.module';
 import { PatientUlcerHistoryModule } from './patient_ulcer_history/patient_ulcer_history.module';
 import { PatientUlcerHistoryEntity } from './patient_ulcer_history/patient_ulcer_history.entity';
+import { PatientIncontinenceEntity } from './patient_incontinence/patient_incontinence.entity';
+import { PatientIncontinenceModule } from './patient_incontinence/patient_incontinence.module';
+import { IntakeLevelsEntity } from './intake_levels/intake_levels.entity';
+import { PatientMealRecordsEntity } from './patient_meal_records/patient_meal_records.entity';
+import { IntakeLevelsModule } from './intake_levels/intake_levels.module';
+import { PatientMealRecordsModule } from './patient_meal_records/patient_meal_records.module';
 
 @Module({
   imports: [
@@ -48,9 +54,12 @@ import { PatientUlcerHistoryEntity } from './patient_ulcer_history/patient_ulcer
         MeasurementEntity,
         PatientBedHistoryEntity,
         PatientWarningStateEntity,
+        PatientIncontinenceEntity,
         WeightMeasurementEntity,
         BodyPartsEntity,
         PatientUlcerHistoryEntity,
+        IntakeLevelsEntity,
+        PatientMealRecordsEntity,
       ],
       synchronize: true,
     }),
@@ -66,6 +75,9 @@ import { PatientUlcerHistoryEntity } from './patient_ulcer_history/patient_ulcer
     WebModule,
     BodyPartsModule,
     PatientUlcerHistoryModule,
+    PatientIncontinenceModule,
+    IntakeLevelsModule,
+    PatientMealRecordsModule,
   ],
   controllers: [],
   providers: [

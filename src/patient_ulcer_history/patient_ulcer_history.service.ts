@@ -30,6 +30,7 @@ export class PatientUlcerHistoryService {
         .where('ulcer.patient_code = :patientCode', { patientCode })
         .andWhere('ulcer.part_code = :partCode', { partCode: part.part_code })
         .orderBy('ulcer.record_date', 'DESC')
+        .addOrderBy('ulcer.history_code', 'DESC')
         .limit(1)
         .getOne();
 
@@ -147,7 +148,7 @@ export class PatientUlcerHistoryService {
       )
       .where('ulcer.patient_code = :patientCode', { patientCode })
       .orderBy('ulcer.record_date', 'DESC')
-      .addOrderBy('ulcer.created_at', 'DESC')
+      .addOrderBy('ulcer.history_code', 'DESC')
       .take(size)
       .skip((page - 1) * size)
       .getRawAndEntities();
