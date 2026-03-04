@@ -34,12 +34,6 @@ export class PatientUlcerHistoryService {
         .getOne();
 
       if (latestRecord) {
-        console.log('=== latestRecord ===', latestRecord);
-        console.log(
-          '=== record_date 타입 ===',
-          typeof latestRecord.record_date,
-        );
-        console.log('=== record_date 값 ===', latestRecord.record_date);
         const stageName = this.getStageNameByCode(latestRecord.stage_code);
 
         let formattedDate = '';
@@ -55,6 +49,7 @@ export class PatientUlcerHistoryService {
           stage_name: stageName,
           stage_level: latestRecord.stage_code,
           last_record_date: latestRecord.record_date,
+          notes: latestRecord.notes,
         });
       } else {
         currentStatus.push({
@@ -64,6 +59,7 @@ export class PatientUlcerHistoryService {
           stage_name: '0단계 (없음)',
           stage_level: 0,
           last_record_date: null,
+          notes: null,
         });
       }
     }
@@ -115,7 +111,7 @@ export class PatientUlcerHistoryService {
         order: { record_date: 'ASC' },
       });
 
-      chartData[part.part_name] = records.map((record) => ({
+      chartData[part.part_code] = records.map((record) => ({
         date: record.record_date,
         stage_level: record.stage_code,
       }));
