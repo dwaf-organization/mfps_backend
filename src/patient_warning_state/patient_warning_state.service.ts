@@ -163,7 +163,7 @@ export class PatientWarningStateService {
         return;
       }
 
-      // 2. 무게 데이터로 빈 침대 확인 (5000 미만 시 안정 상태)
+      // 2. 무게 데이터로 빈 침대 확인 (15000 미만 시 안정 상태)
       const totalWeight = await this.getTotalWeight(
         patientCode,
         latestMeasurement.create_at,
@@ -196,7 +196,26 @@ export class PatientWarningStateService {
 
       const avgMap = calcSensorAverages(rows);
       const lastMove = findLastMovementTime(rows, avgMap);
-      const newState = decideWarningState(lastMove, anchor);
+
+      // 1. 최신 안전확인 시점 조회
+      const latestWarning = await this.warningRepository.findOne({
+        where: { patient_code: patientCode },
+        order: { create_at: 'DESC' },
+      });
+
+      // 2. 기준시점 결정 (센서 움직임 vs 안전확인 중 더 최근 것)
+      let baseTime = lastMove;
+      const safetyConfirmTime = latestWarning?.last_change_at;
+
+      if (safetyConfirmTime && (!lastMove || safetyConfirmTime > lastMove)) {
+        baseTime = safetyConfirmTime;
+        console.log(
+          `환자 ${patientCode}: 안전확인 기준 적용 (${safetyConfirmTime})`,
+        );
+      }
+
+      // 3. 기준시점 기반 위험도 계산
+      const newState = this.decideWarningStateFromBase(baseTime, anchor);
 
       const warningData: Partial<PatientWarningStateEntity> = {
         patient_code: patientCode,
@@ -215,6 +234,22 @@ export class PatientWarningStateService {
     } catch (error) {
       console.error(`환자 ${patientCode} 분석 중 오류:`, error);
     }
+  }
+
+  // 기준시점 기반 위험도 계산
+  private decideWarningStateFromBase(
+    baseTime: Date | null,
+    currentTime: Date,
+  ): number {
+    if (!baseTime) return 2; // 기준시점 없으면 위험
+
+    const diffMinutes = Math.floor(
+      (currentTime.getTime() - baseTime.getTime()) / 60000,
+    );
+
+    if (diffMinutes < 60) return 0; // 1시간 미만: 안전
+    if (diffMinutes < 120) return 1; // 1-2시간: 주의
+    return 2; // 2시간 이상: 위험
   }
 
   // 최신 측정 데이터 조회
@@ -330,5 +365,111 @@ export class PatientWarningStateService {
         sensor_index: number;
         value: number;
       }>();
+  }
+
+  // 현재 위험 환자 조회 (GET /api/patient/warning/risk-list)
+  async getRiskList() {
+    const riskPatients = await this.dataSource.query(`
+        SELECT DISTINCT
+            pws.patient_code,
+            pp.patient_name,
+            pp.age,
+            pws.warning_state,
+            pws.last_change_at,
+            pws.description,
+            pws.create_at,
+            
+            -- 병동 구조 정보
+            ward.category_name as ward_name,
+            floor.category_name as floor_name, 
+            room.category_name as room_name,
+            bed.category_name as bed_name,
+            
+            -- 최신 측정 데이터
+            m.temperature,
+            m.humidity
+            
+        FROM patient_warning_state pws
+        INNER JOIN patient_profile pp ON pws.patient_code = pp.patient_code
+        INNER JOIN hospital_structure_info bed ON pp.bed_code = bed.hospital_st_code
+        INNER JOIN hospital_structure_info room ON bed.parents_code = room.hospital_st_code  
+        INNER JOIN hospital_structure_info floor ON room.parents_code = floor.hospital_st_code
+        INNER JOIN hospital_structure_info ward ON floor.parents_code = ward.hospital_st_code
+        LEFT JOIN (
+            SELECT 
+                patient_code,
+                temperature,
+                humidity,
+                ROW_NUMBER() OVER (PARTITION BY patient_code ORDER BY create_at DESC) as rn
+            FROM measurement 
+        ) m ON pws.patient_code = m.patient_code AND m.rn = 1
+        
+        WHERE pws.warning_state IN (1, 2)
+        AND pws.create_at = (
+            SELECT MAX(create_at) 
+            FROM patient_warning_state 
+            WHERE patient_code = pws.patient_code
+        )
+        AND pp.is_deleted = 0
+        
+        ORDER BY pws.warning_state DESC, pws.create_at ASC
+    `);
+    return riskPatients.map((patient) => {
+      const currentTime = new Date();
+      const lastChangeTime = new Date(
+        patient.last_change_at || patient.create_at,
+      );
+      const durationHours = Math.floor(
+        (currentTime.getTime() - lastChangeTime.getTime()) / (1000 * 60 * 60),
+      );
+
+      return {
+        patient_code: patient.patient_code,
+        patient_name: patient.patient_name,
+        patient_age: patient.age,
+        hospital_structure: `${patient.ward_name} > ${patient.floor_name} > ${patient.room_name} > ${patient.bed_name}`,
+        warning_state: patient.warning_state,
+        duration_hours: durationHours,
+        temperature: patient.temperature || null,
+        humidity: patient.humidity || null,
+        last_change_time: lastChangeTime
+          .toISOString()
+          .replace('T', ' ')
+          .split('.')[0],
+      };
+    });
+  }
+
+  // 안전확인 처리 (POST /api/patient/warning/safety-confirm)
+  async safetyConfirm(patientCode: number, confirmedBy?: string) {
+    const latestWarning = await this.warningRepository.findOne({
+      where: { patient_code: patientCode },
+      order: { create_at: 'DESC' },
+    });
+
+    if (!latestWarning || latestWarning.warning_state === 0) {
+      return {
+        patient_code: patientCode,
+        message: '이미 안전 상태입니다.',
+        action: 'no_change',
+      };
+    }
+
+    const safetyRecord = this.warningRepository.create({
+      patient_code: patientCode,
+      warning_state: 0,
+      last_change_at: new Date(),
+      description: `수동 안전확인${confirmedBy ? ` (확인자: ${confirmedBy})` : ''}`,
+    });
+
+    await this.warningRepository.save(safetyRecord);
+
+    return {
+      patient_code: patientCode,
+      previous_state: latestWarning.warning_state,
+      current_state: 0,
+      confirmed_at: safetyRecord.last_change_at,
+      action: 'confirmed',
+    };
   }
 }
