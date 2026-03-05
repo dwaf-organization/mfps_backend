@@ -436,6 +436,10 @@ export class PatientWarningStateService {
           .toISOString()
           .replace('T', ' ')
           .split('.')[0],
+        detected_at: new Date(patient.create_at)
+          .toISOString()
+          .replace('T', ' ')
+          .split('.')[0],
       };
     });
   }
